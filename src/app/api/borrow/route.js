@@ -2,6 +2,7 @@ import { getClientPromise } from "@/lib/mongodb";
 import corsHeaders from "@/lib/cors";
 import { NextResponse } from "next/server";
 import { verifyAuth, authErrorResponse } from "@/lib/auth";
+import { ObjectId } from "mongodb";
 
 export async function OPTIONS() {
   return new Response(null, { status: 200, headers: corsHeaders });
@@ -40,13 +41,24 @@ export async function POST(req) {
     const client = await getClientPromise();
     const db = client.db("library_db");
 
+    let requestStatus = "init";
+    if (!ObjectId.isValid(bookId)) {
+      requestStatus = "close-no-available-book";
+    } else {
+      const book = await db.collection("books").findOne({ _id: new ObjectId(bookId) });
+      const isAvailable = book && !book.deleted && Number(book.quantity) > 0;
+      if (!isAvailable) {
+        requestStatus = "close-no-available-book";
+      }
+    }
+
     const newBorrowRequest = {
       userId: auth.user.id,
-      userEmail: auth.user.email, // ✅ ADDED: Save the actual borrower's email!
+      userEmail: auth.user.email,
       bookId: bookId,
       createdAt: new Date(),
       targetDate: new Date(targetDate),
-      requestStatus: "init"
+      requestStatus
     };
 
     const result = await db.collection("borrows").insertOne(newBorrowRequest);
